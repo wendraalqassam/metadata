@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Protected Page</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 100px; }
+    input { padding: 5px; margin: 5px; }
+  </style>
+</head>
+<body>
+
+<div id="login">
+  <h2>Masukkan Password</h2>
+  <input type="password" id="password" placeholder="Password">
+  <button onclick="checkPassword()">Login</button>
+  <p id="error" style="color: red;"></p>
+</div>
+
+<div id="content" style="display:none;">
+  <iframe src="asli.html" width="100%" height="600px" style="border:none;"></iframe>
+</div>
+
+<script>
+  // Hash password pakai SHA-256
+  async function sha256(message) {
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function checkPassword() {
+    const pass = document.getElementById("password").value;
+    const hash = await sha256(pass);
+
+    // Ganti dengan hash dari password yang benar
+    const correctHash = "089b88a12d26af9d6ed4d653a72c98488a6c0b957c48679a4695f6331e8f67bb"; // contoh: "password"
+
+    if (hash === correctHash) {
+      document.getElementById("login").style.display = "none";
+      document.getElementById("content").style.display = "block";
+    } else {
+      document.getElementById("error").textContent = "Password salah!";
+    }
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>XML Metadata Editor</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+    ul { list-style-type: none; padding-left: 20px; }
+    li { margin: 4px 0; }
+    .node { cursor: pointer; font-weight: bold; color: #0d6efd; }
+    .collapsed::before { content: "▶ "; font-size: 12px; }
+    .expanded::before { content: "▼ "; font-size: 12px; }
+    .value, .attr-input { margin-left: 10px; width: 100%; max-width: 400px; display: inline-block; }
+    .attr-label { color: #6c757d; font-size: 0.85em; margin-left: 5px; }
+    .tree-container {
+        max-height: 500px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        padding: 10px;
+        border-radius: 5px;
+        background: #f8f9fa;
+    }
+    footer {
+        margin-top: 30px;
+        padding: 10px 0;
+        text-align: center;
+        background: #f1f1f1;
+        border-top: 1px solid #ddd;
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    textarea.xml-editor {
+        font-family: monospace;
+        font-size: 0.85rem;
+        height: 400px;
+        white-space: pre;
+    }
+</style>
+</head>
+<body class="bg-light">
+
+<div class="container mt-4">
+    <h2 class="mb-4 text-primary">XML Metadata Editor</h2>
+
+    <div class="card p-3 mb-3">
+        <label for="fileInput" class="form-label">Upload XML File</label>
+        <input type="file" id="fileInput" class="form-control mb-3" accept=".xml">
+
+        <div class="btn-group mt-2">
+            <button id="exportBtn" class="btn btn-success">Export XML</button>
+            <button id="viewBtn" class="btn btn-info">View/Edit XML</button>
+            <button id="collapseAllBtn" class="btn btn-secondary">Collapse All</button>
+            <button id="expandAllBtn" class="btn btn-secondary">Expand All</button>
+            <button id="resetBtn" class="btn btn-warning">Reset Isian</button>
+        </div>
+    </div>
+
+    <div class="card p-3">
+        <h5 class="mb-3">Editor XML</h5>
+        <div id="treeContainer" class="tree-container"></div>
+    </div>
+</div>
+
+<footer>
+    © Wendra @ 2025
+</footer>
+
+<!-- Modal View/Edit XML -->
+<div class="modal fade" id="xmlModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">View/Edit XML</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <!-- Search Bar -->
+        <div class="input-group mb-2">
+            <input type="text" id="searchText" class="form-control" placeholder="Cari teks di XML...">
+            <button id="findNextBtn" class="btn btn-outline-primary">Find Next</button>
+        </div>
+        <textarea id="xmlEditor" class="form-control xml-editor"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button id="applyChangesBtn" class="btn btn-primary">Apply Changes</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let originalXMLDoc = null; 
+let nodeMap = new WeakMap(); 
+let attrMap = new WeakMap(); 
+let searchIndex = 0; 
+
+function parseXMLToTree(xmlNode, parentElement) {
+    const ul = document.createElement("ul");
+
+    for (let child of xmlNode.children) {
+        const li = document.createElement("li");
+
+        const span = document.createElement("span");
+        span.className = "node collapsed"; 
+        span.textContent = child.nodeName;
+
+        if (child.children.length > 0) {
+            span.addEventListener("click", function () {
+                const subUl = li.querySelector("ul");
+                if (subUl.style.display === "none") {
+                    subUl.style.display = "block";
+                    span.classList.remove("collapsed");
+                    span.classList.add("expanded");
+                } else {
+                    subUl.style.display = "none";
+                    span.classList.remove("expanded");
+                    span.classList.add("collapsed");
+                }
+            });
+            li.appendChild(span);
+
+            if (child.attributes.length > 0) {
+                for (let attr of child.attributes) {
+                    const attrLabel = document.createElement("span");
+                    attrLabel.className = "attr-label";
+                    attrLabel.textContent = "@" + attr.name + "=";
+
+                    const attrInput = document.createElement("input");
+                    attrInput.type = "text";
+                    attrInput.value = attr.value;
+                    attrInput.className = "form-control form-control-sm attr-input";
+
+                    attrMap.set(attrInput, { element: child, attrName: attr.name });
+
+                    li.appendChild(attrLabel);
+                    li.appendChild(attrInput);
+                }
+            }
+
+            parseXMLToTree(child, li);
+        } else {
+            li.appendChild(span);
+
+            if (child.attributes.length > 0) {
+                for (let attr of child.attributes) {
+                    const attrLabel = document.createElement("span");
+                    attrLabel.className = "attr-label";
+                    attrLabel.textContent = "@" + attr.name + "=";
+
+                    const attrInput = document.createElement("input");
+                    attrInput.type = "text";
+                    attrInput.value = attr.value;
+                    attrInput.className = "form-control form-control-sm attr-input";
+
+                    attrMap.set(attrInput, { element: child, attrName: attr.name });
+
+                    li.appendChild(attrLabel);
+                    li.appendChild(attrInput);
+                }
+            }
+
+            const valueInput = document.createElement("input");
+            valueInput.type = "text";
+            valueInput.value = child.textContent.trim();
+            valueInput.className = "form-control form-control-sm value mt-1";
+            nodeMap.set(valueInput, child);
+            li.appendChild(valueInput);
+        }
+
+        ul.appendChild(li);
+    }
+    parentElement.appendChild(ul);
+}
+
+function updateXMLFromInputs() {
+    document.querySelectorAll("#treeContainer input.value").forEach(input => {
+        const xmlNode = nodeMap.get(input);
+        if (xmlNode) {
+            xmlNode.textContent = input.value;
+        }
+    });
+
+    document.querySelectorAll("#treeContainer input.attr-input").forEach(input => {
+        const attrData = attrMap.get(input);
+        if (attrData) {
+            attrData.element.setAttribute(attrData.attrName, input.value);
+        }
+    });
+}
+
+function reloadTreeFromXML(xmlString) {
+    const parser = new DOMParser();
+    const newDoc = parser.parseFromString(xmlString, "application/xml");
+
+    if (newDoc.getElementsByTagName("parsererror").length > 0) {
+        alert("XML tidak valid!");
+        return;
+    }
+
+    originalXMLDoc = newDoc;
+    document.getElementById("treeContainer").innerHTML = "";
+    parseXMLToTree(originalXMLDoc.documentElement, document.getElementById("treeContainer"));
+
+    // Tampilkan juga di modal editor
+    const serializer = new XMLSerializer();
+    document.getElementById("xmlEditor").value = serializer.serializeToString(originalXMLDoc);
+}
+
+document.getElementById("fileInput").addEventListener("change", function (e) {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = function (event) {
+        reloadTreeFromXML(event.target.result);
+    };
+    reader.readAsText(file);
+});
+
+document.getElementById("exportBtn").addEventListener("click", function () {
+    if (!originalXMLDoc) {
+        alert("Silakan upload XML terlebih dahulu.");
+        return;
+    }
+    updateXMLFromInputs();
+    const serializer = new XMLSerializer();
+    const xmlString = serializer.serializeToString(originalXMLDoc);
+    const blob = new Blob([xmlString], { type: "application/xml" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "edited.xml";
+    a.click();
+});
+
+document.getElementById("viewBtn").addEventListener("click", function () {
+    if (!originalXMLDoc) {
+        alert("Silakan upload XML terlebih dahulu.");
+        return;
+    }
+    updateXMLFromInputs();
+    const serializer = new XMLSerializer();
+    document.getElementById("xmlEditor").value = serializer.serializeToString(originalXMLDoc);
+    searchIndex = 0;
+    new bootstrap.Modal(document.getElementById("xmlModal")).show();
+});
+
+document.getElementById("applyChangesBtn").addEventListener("click", function () {
+    const editedXML = document.getElementById("xmlEditor").value;
+    reloadTreeFromXML(editedXML);
+    bootstrap.Modal.getInstance(document.getElementById("xmlModal")).hide();
+});
+
+// FIND NEXT
+document.getElementById("findNextBtn").addEventListener("click", function () {
+    const searchValue = document.getElementById("searchText").value;
+    const textarea = document.getElementById("xmlEditor");
+    const content = textarea.value;
+
+    if (!searchValue) return;
+
+    const pos = content.indexOf(searchValue, searchIndex);
+    if (pos !== -1) {
+        textarea.focus();
+        textarea.setSelectionRange(pos, pos + searchValue.length);
+        searchIndex = pos + searchValue.length;
+    } else {
+        alert("Tidak ditemukan lagi.");
+        searchIndex = 0;
+    }
+});
+
+// COLLAPSE & EXPAND
+document.getElementById("collapseAllBtn").addEventListener("click", function () {
+    document.querySelectorAll("#treeContainer ul ul").forEach(ul => ul.style.display = "none");
+    document.querySelectorAll("#treeContainer .node").forEach(node => {
+        node.classList.remove("expanded");
+        node.classList.add("collapsed");
+    });
+});
+
+document.getElementById("expandAllBtn").addEventListener("click", function () {
+    document.querySelectorAll("#treeContainer ul ul").forEach(ul => ul.style.display = "block");
+    document.querySelectorAll("#treeContainer .node").forEach(node => {
+        node.classList.remove("collapsed");
+        node.classList.add("expanded");
+    });
+});
+
+// RESET ISIAN
+document.getElementById("resetBtn").addEventListener("click", function () {
+    if (!confirm("Yakin reset semua nilai dan atribut menjadi kosong?")) return;
+
+    // Kosongkan input di Tree View
+    document.querySelectorAll("#treeContainer input.value").forEach(input => input.value = "");
+    document.querySelectorAll("#treeContainer input.attr-input").forEach(input => input.value = "");
+
+    // Update XMLDoc kosongkan value & atribut
+    document.querySelectorAll("#treeContainer input.value").forEach(input => {
+        const xmlNode = nodeMap.get(input);
+        if (xmlNode) xmlNode.textContent = "";
+    });
+    document.querySelectorAll("#treeContainer input.attr-input").forEach(input => {
+        const attrData = attrMap.get(input);
+        if (attrData) attrData.element.setAttribute(attrData.attrName, "");
+    });
+
+    // Update XML di modal
+    const serializer = new XMLSerializer();
+    document.getElementById("xmlEditor").value = serializer.serializeToString(originalXMLDoc);
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
